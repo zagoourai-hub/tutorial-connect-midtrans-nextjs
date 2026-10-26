@@ -1,0 +1,87 @@
+TypeScript memeriksa kode saat development, tetapi request HTTP tetap dapat membawa nilai apa pun. Zod 4.6.7 memeriksa data tersebut saat runtime sebelum checkout menyentuh database atau webhook mengubah status pembayaran.
+
+## Tujuan Pembelajaran
+
+- Menggunakan schema Zod 4 untuk input checkout dan notifikasi Midtrans.
+- Memahami `safeParse()` dan tipe hasil `z.infer`.
+- Membatasi quantity, jumlah item, bentuk payload dan ukuran body.
+
+## Prasyarat
+
+[Database contoh](/docs/prisma) sudah tersedia. Anda memahami objek, array, string dan number TypeScript. Jalankan contoh melalui aplikasi repository agar schema dan tests menggunakan source yang sama.
+
+## Langkah 1 — Baca schema checkout
+
+<SourceCode path="lib/validations/checkout.ts" />
+
+`z.object()` menyusun field objek. `z.string()` memeriksa ID, `z.number()` memeriksa quantity, dan validasi integer/range menolak pecahan atau angka di luar batas. `z.enum()` berguna ketika input hanya boleh memilih nilai tertentu; daftar enum bukan alasan mempercayai status yang dikirim browser.
+
+Schema checkout membatasi 1–20 produk berbeda dengan quantity integer 1–10 untuk setiap item. Product ID duplikat ditolak supaya fingerprint dan perhitungan order tidak ambigu. Field harga atau total dari client tidak digunakan; payload strict menolak field tambahan tersebut sejak awal. Total server dibatasi maksimum Rp100.000.000 pada aplikasi contoh.
+
+### Payload yang diterima
+
+```json title="Body checkout"
+{
+  "items": [
+    { "productId": "nextjs-course", "quantity": 1 }
+  ]
+}
+```
+
+ID `nextjs-course` berasal dari seed dengan harga Rp50.000; `typescript-guide` seharga Rp25.000 adalah produk aktif kedua. Produk `inactive-product` sengaja tidak aktif untuk pengujian. String `"1"`, number `1.5`, quantity negatif, keranjang kosong, atau tambahan `totalAmount` bukan cara yang valid mengirim request.
+
+## Langkah 2 — Gunakan hasil parsing, bukan input asli
+
+`safeParse()` mengembalikan hasil sukses berisi data bertipe, atau hasil gagal berisi detail validasi. Setelah sukses, teruskan **data hasil parsing** ke logika checkout; jangan kembali memakai raw body karena itu melewati normalisasi/pemeriksaan schema.
+
+`z.infer` menurunkan tipe TypeScript dari schema yang sama sehingga tipe DTO tidak perlu disalin manual. Field yang ditandai opsional tetap harus ditangani sebagai kemungkinan tidak tersedia. Detail error internal tidak semuanya perlu dikirim ke pengunjung; API menggunakan error code serta pesan aman.
+
+## Langkah 3 — Validasi payload provider
+
+<SourceCode path="lib/validations/midtrans.ts" />
+
+Webhook berbeda dari checkout: Midtrans dapat menambahkan field resmi pada payload. Validasi field inti dan panjang nilainya tanpa menolak seluruh notifikasi hanya karena terdapat field provider baru yang tidak dipakai aplikasi.
+
+Signature, identitas transaksi, gross amount dan status memiliki tipe yang harus dipertahankan. `gross_amount` berupa string desimal perlu tetap tersedia dalam bentuk asli ketika menghitung signature. Parsing angka dilakukan setelah itu dengan pemeriksaan yang tepat, bukan `parseFloat()` lalu berharap hasil pembulatan benar.
+
+## Langkah 4 — Batasi pekerjaan sebelum parsing
+
+<SourceCode path="lib/http.ts" />
+
+Batas schema tidak cukup jika server sudah membaca body berukuran sangat besar. Batasi byte aktual sebelum JSON parsing, periksa Content-Type dan terapkan admission/rate limit sebelum pemanggilan provider. `Content-Length` saja tidak menjamin ukuran body aktual; request dapat datang tanpa header tersebut.
+
+Origin check berlaku untuk sesi dan checkout browser. Webhook menggunakan autentikasi signature serta status server-to-server dan tidak bergantung pada cookie browser.
+
+## Penjelasan Kode
+
+Validasi berlapis mempunyai tujuan berbeda: Zod memeriksa bentuk data, database memastikan produk dan relasi benar, signature memeriksa asal notifikasi, dan GET status mengonfirmasi pembayaran kepada provider. Lolos schema tidak berarti pembayaran telah sah.
+
+Nominal akhir dihitung dari harga Product di database dan disimpan pada OrderItem. Produk tidak ditemukan/nonaktif menghasilkan kegagalan yang terkontrol, tanpa order parsial. Batas nominal juga diperlukan agar penjumlahan integer tetap aman.
+
+## Validasi dan Testing
+
+```sh title="Terminal"
+pnpm --filter payment-example test
+pnpm --filter payment-example typecheck
+```
+
+Pastikan test mencakup input valid; quantity string/pecahan/nol; item duplikat; keranjang kosong; field harga client; payload rusak; body tanpa Content-Length yang melebihi batas; serta webhook dengan field tambahan resmi. Expected result input invalid adalah penolakan tanpa DB mutation atau SDK call.
+
+Status validasi mengikuti laporan CI repository. Menggunakan test provider mock tidak membuktikan format seluruh variasi notifikasi Sandbox; hasil real notification harus dicocokkan kembali pada [pengujian Sandbox](/docs/testing).
+
+## Troubleshooting
+
+- **Payload selalu gagal:** lihat tipe sebenarnya; JSON number berbeda dari string number.
+- **Status provider baru ditolak:** periksa schema dan mapping secara terpisah; jangan menjadikan status tak dikenal sebagai PAID.
+- **Validasi lulus tetapi produk 404:** bentuk ID valid tidak membuktikan produk tersebut ada di database.
+- **413 pada webhook:** cocokkan ukuran payload nyata dengan batas yang disetujui; jangan menonaktifkan body limit sepenuhnya.
+
+## Hasil Akhir
+
+Anda memiliki schema checkout/webhook dan memahami mengapa harga server serta verifikasi provider masih diperlukan. Berikutnya, [konfigurasikan SDK Midtrans](/docs/midtrans-sdk).
+
+## Referensi
+
+- [Zod — dokumentasi resmi](https://zod.dev/)
+- [Zod — dasar parsing](https://zod.dev/basics)
+- [Midtrans HTTP notifications](https://docs.midtrans.com/docs/https-notification-webhooks)

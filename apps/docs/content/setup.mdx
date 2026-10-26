@@ -1,0 +1,112 @@
+Gunakan workspace contoh agar struktur, dependency, dan potongan kode tutorial tetap sinkron. Node.js dan pnpm menjalankan tooling, sedangkan dua aplikasi memiliki runtime yang berbeda: dokumentasi statis dan server pembayaran lokal.
+
+## Tujuan Pembelajaran
+
+- Menyiapkan Node.js dan pnpm serta membaca versi yang digunakan.
+- Menjalankan aplikasi contoh tanpa mengubah website dokumentasi.
+- Memahami struktur App Router, TypeScript strict, dan command kualitas.
+
+## Prasyarat
+
+Git, terminal, editor, dan koneksi internet. Lingkungan transisi repository menggunakan Node.js 26.12.1 dan pnpm 12.5.1; versi package exact tersedia dalam lockfile. Ikuti audit dependency project sebelum instalasi atau package execution.
+
+## Langkah 1 — Periksa tooling
+
+Pasang Node.js dari distribusi resmi dan pnpm mengikuti panduan resminya. Kemudian periksa executable yang tersedia:
+
+```sh title="Terminal"
+node --version
+pnpm --version
+git --version
+```
+
+Jangan menganggap versi Node yang memenuhi minimum Next.js otomatis kompatibel dengan seluruh native adapter. Hasil lint, typecheck, test, dan build pada versi yang sama adalah bukti yang lebih kuat.
+
+## Langkah 2 — Ambil source tutorial
+
+```sh title="Terminal"
+git clone https://github.com/zagoourai-hub/tutorial-connect-midtrans-nextjs.git
+cd tutorial-connect-midtrans-nextjs
+pnpm install --frozen-lockfile
+```
+
+`--frozen-lockfile` menolak perubahan graph dependency yang tidak sesuai manifest. Jika install gagal karena lockfile berbeda, periksa branch dan versi pnpm; jangan langsung menghapus lockfile atau melakukan upgrade massal.
+
+### Memahami inisialisasi Next.js
+
+Untuk project belajar baru yang terpisah, App Router dapat diinisialisasi dengan CLI Next.js. Perintah berikut menjelaskan tahap scaffolding; **tidak perlu dijalankan lagi di repository yang baru Anda clone**:
+
+```sh title="Terminal — project terpisah"
+pnpm create next-app@16.4.2 payment-example --typescript --eslint --tailwind --app --use-pnpm
+```
+
+Source contoh dalam repository sudah melewati tahap tersebut. Dependency pembayaran, schema, dan pengujiannya dipelajari pada chapter berikutnya; jangan mengganti struktur existing dengan hasil scaffold baru.
+
+## Langkah 3 — Kenali struktur aplikasi
+
+```text title="Folder penting"
+apps/payment-example/
+  app/api/checkout/         Checkout Route Handler
+  app/api/midtrans/webhook/ Endpoint notifikasi provider
+  app/checkout/             UI produk dan status order
+  components/              Tombol Redirect dan Popup
+  lib/                     Validasi, database, SDK, status
+  prisma/                  Schema dan migration SQLite
+  scripts/                 Seed dan rekonsiliasi lokal
+  tests/                   Pengujian otomatis
+```
+
+`app/` menentukan route. File server mengakses database dan Server Key; komponen dengan interaksi browser memakai Client Component. Alias `@/` mengarah ke root aplikasi. TypeScript `strict` membantu mendeteksi data yang mungkin `undefined`, tetapi input jaringan tetap harus divalidasi runtime memakai Zod.
+
+## Langkah 4 — Siapkan env lalu jalankan
+
+Salin `.env.example` aplikasi ke `.env`. Pada PowerShell:
+
+```powershell title="PowerShell"
+Copy-Item apps/payment-example/.env.example apps/payment-example/.env
+```
+
+Isi key Sandbox sesuai [chapter konfigurasi Midtrans](/docs/midtrans-setup), lalu jalankan perintah database pada [chapter Prisma](/docs/prisma). Setelah keduanya siap:
+
+```sh title="Terminal"
+pnpm --filter payment-example dev
+```
+
+Buka `http://localhost:3001/checkout`. Untuk website dokumentasi, jalankan `pnpm --filter next-app dev` pada terminal lain. Perhatikan port yang dicetak CLI agar tidak membuka aplikasi yang salah.
+
+## Penjelasan Kode
+
+Workspace menggunakan satu lockfile dan package terpisah. Perintah `--filter payment-example` membatasi operasi ke aplikasi contoh; nama package dokumentasi tetap `next-app`. Dependency bersama tidak berarti runtime docs memiliki akses ke env pembayaran.
+
+File `.env`, database SQLite, dependency terpasang, dan output build diabaikan oleh Git. `.env.example` hanya berisi nama variabel serta placeholder aman, bukan key yang dapat digunakan.
+
+## Validasi dan Testing
+
+Setelah env dan database tersedia, jalankan dari root:
+
+```sh title="Terminal"
+pnpm --filter payment-example lint
+pnpm --filter payment-example typecheck
+pnpm --filter payment-example test
+pnpm --filter payment-example build
+```
+
+Expected result: setiap command selesai tanpa error. Lihat jumlah test dan warning aktual, jangan hanya menyalin kata “lulus”. Status validasi otomatis mengikuti laporan CI; pengujian Sandbox manual tetap memerlukan key serta tunnel Anda sendiri.
+
+## Troubleshooting
+
+- **Port sudah digunakan:** hentikan server milik Anda atau sesuaikan port dan `APP_ORIGIN` secara konsisten.
+- **Module tidak ditemukan:** pastikan install dijalankan dari root workspace dengan lockfile yang sama.
+- **Env invalid atau database belum ada:** lanjutkan konfigurasi Midtrans dan Prisma sebelum mencoba checkout.
+- **PowerShell menolak launcher script:** gunakan instalasi/launcher pnpm yang diizinkan kebijakan perangkat; jangan menonaktifkan kebijakan sistem secara global demi tutorial.
+
+## Hasil Akhir
+
+Workspace dapat dikenali, Anda mengetahui perintah aplikasi contoh, dan memahami file mana yang berada di server. Lanjutkan ke [konfigurasi Midtrans](/docs/midtrans-setup).
+
+## Referensi
+
+- [Instalasi Next.js](https://nextjs.org/docs/app/getting-started/installation)
+- [Instalasi pnpm](https://pnpm.io/installation)
+- [Node.js downloads](https://nodejs.org/en/download)
+- [pnpm filtering](https://pnpm.io/filtering)

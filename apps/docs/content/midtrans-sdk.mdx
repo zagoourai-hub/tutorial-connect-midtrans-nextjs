@@ -1,0 +1,85 @@
+SDK resmi `midtrans-client` versi 1.4.3 menangani komunikasi ke API Midtrans. SDK tetap harus dibungkus oleh konfigurasi server yang benar, validasi respons, dan error handling yang membedakan kegagalan pasti dari hasil jaringan yang belum diketahui.
+
+## Tujuan Pembelajaran
+
+- Membuat Snap client menggunakan kredensial server.
+- Memahami transaction token, `redirect_url`, status, dan notification helper.
+- Menangani TypeScript compatibility, redirect allowlist dan timeout tanpa menggandakan transaksi.
+
+## Prasyarat
+
+Env Sandbox [sudah diisi](/docs/midtrans-setup), [schema Zod](/docs/validation) tersedia, dan dependency SDK sesuai manifest/lockfile aplikasi contoh. Gunakan versi exact repository untuk mengikuti hasil tests yang sama.
+
+## Langkah 1 — Kenali instalasi SDK
+
+Pada project terpisah, SDK merupakan dependency server aplikasi pembayaran. Pada workspace tutorial, deklarasi sudah tersedia; tidak perlu menambahkan SDK ke `apps/docs`.
+
+```sh title="Terminal — periksa dependency"
+pnpm --filter payment-example list midtrans-client --depth 0
+```
+
+Perintah itu membaca versi yang terpasang. Ketika memperbarui versi, periksa ulang method runtime, deklarasi tipe, struktur response dan tests; jangan menyamakan keberhasilan import dengan kompatibilitas seluruh API.
+
+## Langkah 2 — Baca implementasi client
+
+<SourceCode path="lib/midtrans.ts" />
+
+Client memilih endpoint Sandbox atau Production dari flag eksplisit dan memakai Server Key yang divalidasi. Method `snap.createTransaction(parameters)` membuat transaksi Snap. Respons yang diterima harus memiliki token dan URL redirect yang valid; data dari SDK tetap berasal dari jaringan sehingga type declaration saja belum cukup sebagai pemeriksaan runtime.
+
+### Parameter transaksi
+
+`transaction_details.order_id` berasal dari order ID server yang sudah disimpan. `gross_amount` berasal dari total snapshot database. Jika mengirim `item_details`, subtotal detail harus sama dengan nominal transaksi; jangan mengambil harga dari request browser.
+
+Token Snap mengidentifikasi sesi pembayaran dan diperlukan Popup. `redirect_url` adalah URL halaman pembayaran untuk alur utama Redirect. Browser menerima URL tersebut hanya setelah server memverifikasi protokol HTTPS dan hostname provider sesuai environment.
+
+## Langkah 3 — Ambil status melalui server
+
+`snap.transaction.status(orderId)` mengambil status terautentikasi menggunakan Server Key. Respons tetap harus dicocokkan terhadap order, transaction ID, nominal dan fraud status sebelum database diperbarui.
+
+`snap.transaction.notification(notification)` pada SDK merupakan helper untuk mengambil status berdasarkan data notifikasi. Jangan menganggap helper ini otomatis menggantikan semua pemeriksaan signature, kecocokan amount dan state transition yang diperlukan aplikasi.
+
+Tidak ada Server Key di Client Component. Popup hanya membutuhkan Client Key dan Snap token yang telah dikeluarkan backend untuk pemilik order; detailnya ada pada [chapter Popup](/docs/snap-popup).
+
+## Langkah 4 — Bedakan error dan hasil ambigu
+
+```text title="Keputusan setelah createTransaction"
+Respons sukses dan persist berhasil → READY
+Penolakan provider yang pasti       → FAILED / pesan aman
+Timeout atau proses terputus        → UNKNOWN / rekonsiliasi
+```
+
+Timeout dapat terjadi sesudah provider menerima request. Pertahankan order ID dan idempotency key; jangan membuat order baru hanya karena promise ditolak. Timeout juga harus membatasi transport yang berjalan, bukan sekadar `Promise.race()` yang membiarkan koneksi dan pekerjaan provider terus berjalan tanpa kontrol.
+
+## Penjelasan Kode
+
+Client SDK berada pada modul server bersama sehingga konfigurasi dan sanitasi error tidak disalin ke setiap endpoint. Ini bukan alasan membuat service generik besar: fungsi create/status yang digunakan aplikasi sudah cukup.
+
+SDK error dapat membawa detail request atau URL bertoken. Log hanya kode aman, operasi, durasi dan correlation/order ID yang diperlukan. Jangan mengirim stack trace, raw error, Server Key atau redirect URL lengkap ke log publik.
+
+## Validasi dan Testing
+
+```sh title="Terminal"
+pnpm --filter payment-example typecheck
+pnpm --filter payment-example test
+```
+
+Test transport mock perlu membuktikan: respons valid diterima; schema response invalid ditolak; URL host palsu/HTTP ditolak; timeout membatalkan transport; dan log tidak memuat key/token. Jalankan satu create Sandbox melalui UI hanya setelah database dan webhook siap.
+
+Status validasi otomatis mengikuti CI repository. Materi ini tidak melabeli transaksi real Sandbox sebagai sudah lulus; catat hasil, versi SDK dan tanggal pengujian Anda pada checklist Sandbox.
+
+## Troubleshooting
+
+- **Type declaration method berbeda:** periksa versi terpasang dan method runtime resmi; jangan menambahkan `any` untuk menutupi ketidaksesuaian.
+- **Nominal ditolak:** cocokkan total Order, item details dan format IDR yang dikirim.
+- **Order ID sudah digunakan:** periksa replay existing; jangan mengganti ID diam-diam untuk memaksa transaksi kedua.
+- **Redirect URL tidak lolos allowlist:** cek environment dan host resmi; jangan menerima URL sembarang dari payload.
+
+## Hasil Akhir
+
+SDK siap dipakai dari server dengan batas environment, respons dan timeout yang jelas. Lanjutkan ke [Checkout API](/docs/checkout-api) untuk menghubungkannya dengan reservasi order.
+
+## Referensi
+
+- [SDK resmi Midtrans Node.js](https://github.com/Midtrans/midtrans-nodejs-client)
+- [Snap integration guide](https://docs.midtrans.com/docs/snap-snap-integration-guide)
+- [Midtrans transaction status](https://docs.midtrans.com/reference/get-transaction-status)

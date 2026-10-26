@@ -1,0 +1,39 @@
+import { GitHubIcon } from "@/components/github-icon"
+import type { Metadata } from "next"
+import Link from "next/link"
+import { ArrowRight, ArrowUpRight, BookOpen, Check, CheckCheck, Code2, Database, ExternalLink, Layers3, LockKeyhole, ShieldCheck, Sparkles, Terminal, Webhook } from "lucide-react"
+import { buttonVariants } from "@/components/ui/button"
+import { Card } from "@/components/ui/card"
+import { sourceRepository } from "@/lib/docs-navigation"
+
+export const metadata: Metadata = { alternates: { canonical: "/" } }
+
+const lessons = [
+  [Terminal, "Setup project Next.js", "Fondasi yang siap dikembangkan", "/docs/setup/"],
+  [LockKeyhole, "Konfigurasi Midtrans", "Kenali environment Sandbox", "/docs/midtrans-setup/"],
+  [Database, "Prisma + SQLite", "Simpan order dengan terstruktur", "/docs/prisma/"],
+  [ShieldCheck, "Validasi dengan Zod", "Jaga input di sisi server", "/docs/validation/"],
+  [Code2, "Checkout API", "Harga server dan idempotensi", "/docs/checkout-api/"],
+  [Layers3, "Snap Redirect & Popup", "Dua cara memulai pembayaran", "/docs/payment-button/"],
+  [Webhook, "Webhook terverifikasi", "Status dari sumber yang benar", "/docs/webhook/"],
+  [CheckCheck, "Testing & keamanan", "Uji alur, pahami batasnya", "/docs/testing/"],
+] as const
+
+const steps = [
+  ["01", "Siapkan fondasinya", "Next.js, TypeScript, database, dan akun Midtrans Sandbox.", "/docs/setup/"],
+  ["02", "Bangun alur pembayaran", "Dari checkout API dan Snap Redirect hingga webhook yang terverifikasi.", "/docs/checkout-api/"],
+  ["03", "Uji, lalu pahami produksi", "Jalankan skenario Sandbox dan periksa keamanan sebelum melangkah lebih jauh.", "/docs/testing/"],
+]
+
+function PaymentIllustration() {
+  return <div className="payment-illustration" role="img" aria-label="Ilustrasi alur: kode server membuat transaksi, lalu pembeli memilih metode pembayaran di Snap"><div className="hero-orbit orbit-one" /><div className="hero-orbit orbit-two" /><div className="hero-code-card"><div className="window-dots"><i /><i /><i /></div><div className="hero-code-lines"><span className="code-comment">{"// Buat transaksi Snap"}</span><br /><span className="code-purple">const</span> transaction = <span className="code-purple">await</span><br />snap.<span className="code-blue">createTransaction</span>({'{'}<br /><span className="indent">transaction_details: {'{'}</span><br /><span className="indent-2">order_id: <span className="code-green">&apos;ORDER-001&apos;</span>,</span><br /><span className="indent-2">gross_amount: <span className="code-orange">50000</span></span><br /><span className="indent">{'}'}</span><br />{'}'});</div><span className="hero-code-caption"><span className="status-dot" />server-side · TypeScript</span></div><div className="snap-card"><div className="snap-top"><div className="window-dots"><i /><i /><i /></div><span>Sandbox</span></div><div className="snap-brand"><span className="midtrans-bars"><i /><i /><i /></span>midtrans<span>®</span></div><div className="snap-total"><span>Total pembayaran</span><strong>Rp50.000</strong></div><p>Pilih metode pembayaran</p>{[["G", "GoPay", "gopay"], ["O", "OVO", "ovo"], ["D", "DANA", "dana"], ["▰", "Kartu kredit", "credit"], ["▤", "Bank transfer", "bank"]].map(([icon, name, variant]) => <div className="snap-method" key={name}><span className={`method-icon ${variant}`}>{icon}</span><span>{name}</span><ArrowRight size={13} /></div>)}<div className="snap-secure"><LockKeyhole size={11} />Aman melalui Midtrans</div></div><div className="hero-security"><ShieldCheck size={26} /><span>Verifikasi<br /><strong>di sisi server</strong></span></div><div className="hero-floating-tag"><span className="status-dot" />Siap untuk Sandbox</div></div>
+}
+
+export default function HomePage() {
+  return <main id="main-content"><section className="hero"><div className="hero-inner"><div className="hero-copy"><div className="hero-badge"><span><Sparkles size={12} />Tutorial lengkap</span><span>Next.js · Midtrans · Prisma</span></div><h1>Integrasi Midtrans<br />dengan <span>Next.js</span></h1><p className="hero-description">Bangun alur pembayaran yang kamu pahami.<br className="desktop-break" /> Tutorial bertahap dari setup project, checkout, hingga webhook terverifikasi — dalam Bahasa Indonesia.</p><div className="hero-actions"><Link className={buttonVariants({ size: "lg", className: "hero-primary" })} href="/docs/introduction/">Mulai Tutorial<ArrowRight size={17} /></Link><a className={buttonVariants({ variant: "outline", size: "lg", className: "hero-secondary" })} href={sourceRepository}><GitHubIcon size={18} />Lihat Source Code</a></div><div className="hero-notes"><span><Check size={14} />13 chapter bertahap</span><span><Check size={14} />Source code terbuka</span><span><Check size={14} />Tanpa login</span></div></div><PaymentIllustration /></div><div className="stack-strip">{[["N", "Next.js", "App Router", "next"], ["≋", "Midtrans", "SDK resmi", "midtrans"], ["△", "Prisma", "SQLite", "prisma"], ["Z", "Zod", "Validasi", "zod"], ["TS", "TypeScript", "Strict mode", "typescript"], ["▲", "Deployment", "Dokumentasi statis", "vercel"]].map(([icon, name, description, variant]) => <div key={name}><span className={`stack-icon stack-${variant}`}>{icon}</span><span><strong>{name}</strong><small>{description}</small></span></div>)}</div></section>
+    <section className="learning-section page-width" aria-labelledby="learning-title"><div className="section-heading"><div><span className="eyebrow">DARI KONSEP KE IMPLEMENTASI</span><h2 id="learning-title">Apa yang akan kamu pelajari?</h2></div><p>Setiap langkah punya alasan.<br />Setiap contoh punya source code.</p></div><div className="learning-grid">{lessons.map(([Icon, title, description, href], index) => <Link href={href} key={title}><Card className="lesson-card h-full flex-row ring-0"><span className={`lesson-icon lesson-color-${index % 4}`}><Icon size={21} /></span><span><strong>{title}</strong><small>{description}</small></span><ArrowUpRight size={15} className="lesson-arrow" /></Card></Link>)}</div></section>
+    <section className="roadmap-section page-width" aria-labelledby="roadmap-title"><div className="section-heading"><div><span className="eyebrow">ALUR BELAJAR</span><h2 id="roadmap-title">Satu langkah. Lalu langkah berikutnya.</h2></div><span className="section-pill"><BookOpen size={14} />Belajar sesuai urutan</span></div><div className="roadmap-grid">{steps.map(([number, title, description, href]) => <Link key={number} href={href}><Card className="roadmap-card block h-full ring-0"><span className="roadmap-number">{number}</span><h3>{title}</h3><p>{description}</p><span className="roadmap-link">Jelajahi chapter<ArrowRight size={15} /></span></Card></Link>)}</div></section>
+    <section className="prerequisite-section page-width"><Card className="prerequisite-card flex-row ring-0"><span className="prerequisite-icon"><Terminal size={24} /></span><div><h2>Sebelum mulai</h2><p>Nyaman dengan dasar JavaScript dan React? Kamu siap mengikuti tutorial ini.</p><ul><li><Check size={15} />Node.js dan pnpm</li><li><Check size={15} />Dasar TypeScript dan React</li><li><Check size={15} />Akun Midtrans Sandbox</li></ul></div><Link href="/docs/setup/">Lihat panduan setup<ArrowRight size={16} /></Link></Card></section>
+    <section className="final-cta page-width"><span className="eyebrow">SIAP MEMBANGUN?</span><h2>Pahami alurnya.<br /><span>Bangun dengan percaya diri.</span></h2><p>Mulai dari gambaran besar, lalu ikuti kode dan pengujiannya.</p><Link className={buttonVariants({ size: "lg", className: "hero-primary" })} href="/docs/introduction/">Buka chapter pertama<ArrowRight size={17} /></Link><a className="official-link" href="https://docs.midtrans.com/docs/snap-snap-integration-guide">Dokumentasi resmi Midtrans<ExternalLink size={13} /></a></section>
+  </main>
+}

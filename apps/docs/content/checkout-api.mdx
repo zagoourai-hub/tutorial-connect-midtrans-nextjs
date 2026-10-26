@@ -1,0 +1,91 @@
+Checkout API adalah batas antara keranjang browser, harga database dan transaksi Midtrans. Endpoint harus menghasilkan satu order yang dapat ditelusuri, termasuk ketika browser mengirim ulang request atau jaringan terputus.
+
+## Tujuan Pembelajaran
+
+- Membuat Route Handler checkout dengan Zod dan Prisma.
+- Menyimpan snapshot order `PENDING` sebelum memanggil Midtrans.
+- Menerapkan idempotensi, ownership dan hasil `READY`/`UNKNOWN` yang aman.
+
+## Prasyarat
+
+[Prisma](/docs/prisma), [validasi](/docs/validation), dan [SDK](/docs/midtrans-sdk) tersedia. Katalog telah di-seed. Aplikasi contoh dijalankan pada port 3001 dengan Origin yang cocok konfigurasi server.
+
+## Langkah 1 — Buat sesi anonim
+
+Browser terlebih dahulu memanggil `POST /api/session`. Endpoint membuat atau memakai ulang cookie opaque HttpOnly. Tidak ada akun/login; hash token sesi disimpan sebagai pemilik order ketika checkout dibuat.
+
+<SourceCode path="app/api/session/route.ts" />
+
+Selesaikan inisialisasi sesi sebelum tombol checkout aktif. Token mentah tidak dikirim melalui URL atau disimpan sebagai field JSON order. Origin check mencegah halaman asing menggunakan sesi browser untuk membuat checkout tanpa konteks aplikasi.
+
+## Langkah 2 — Kirim product ID dan quantity
+
+```json title="POST /api/checkout — body"
+{
+  "items": [
+    { "productId": "nextjs-course", "quantity": 1 }
+  ]
+}
+```
+
+Header `Idempotency-Key` berisi UUID yang dibuat sekali untuk satu percobaan checkout. Retry jaringan memakai key dan keranjang yang sama. Product ID harus sesuai seed yang terlihat pada halaman checkout; jangan mengganti harga melalui body.
+
+## Langkah 3 — Periksa Route Handler
+
+<SourceCode path="app/api/checkout/route.ts" />
+
+Handler memeriksa input dan meneruskan data yang sudah diparse ke fungsi checkout. Pisahkan HTTP response dari transaksi database agar logika dapat diuji tanpa bergantung pada browser. Penolakan memakai error envelope yang konsisten dan tidak membocorkan respons SDK mentah.
+
+## Langkah 4 — Simpan order dan panggil Snap
+
+<SourceCode path="lib/checkout.ts" />
+
+Transaksi database singkat membaca produk aktif, menghitung harga integer, lalu menyimpan Order, OrderItems dan Payment awal secara atomik. Unique idempotency key menentukan satu pemenang ketika request bersamaan. Snapshot item tidak berubah ketika harga katalog diperbarui kemudian.
+
+Panggilan Midtrans berjalan **di luar transaksi database**. Gunakan order ID yang sama saat menyusun parameter Snap. Setelah respons terverifikasi, persist token/URL menjadi `READY` tanpa menimpa paymentStatus yang mungkin sudah diperbarui oleh webhook cepat.
+
+### Replay dan response
+
+| Hasil | Respons | Tindakan browser |
+| --- | --- | --- |
+| Transaksi pertama siap | 201 | Arahkan ke redirect URL valid |
+| Replay READY milik sesi sama | 200 | Gunakan order dan URL yang sama |
+| Create belum pasti/masih berlangsung | 202 | Tampilkan pending recovery, pertahankan key |
+| Key sama, keranjang berbeda | 409 | Jelaskan konflik, jangan diam-diam create ulang |
+| Key milik sesi lain | 404 generik | Tidak mengungkap detail order |
+
+Error input, session/Origin, produk hilang, ukuran body, rate limit dan provider harus dibedakan. Kegagalan DB sesudah provider mungkin menerima create tidak membuktikan bahwa transaksi gagal; request ulang harus menemukan attempt existing.
+
+## Penjelasan Kode
+
+Idempotensi bukan sekadar menonaktifkan tombol. Request dapat datang dari tab lain, timeout, retry proxy atau proses bersamaan. Perlindungan utamanya adalah unique constraint, pemeriksaan ownership/fingerprint dan aturan tidak mengulang create pada status ambigu.
+
+Fingerprint dibuat dari product ID/quantity yang diurutkan, bukan harga client. Pemeriksaan replay tidak boleh membocorkan order sebelum sesi pemilik cocok. Kondisi `INITIATED` yang ditinggalkan process crash memerlukan rekonsiliasi seperti `UNKNOWN`, bukan langsung transaksi baru.
+
+## Validasi dan Testing
+
+```sh title="Terminal"
+pnpm --filter payment-example test
+pnpm --filter payment-example typecheck
+```
+
+Periksa test input valid/invalid, harga dimanipulasi, produk 404, double request bersamaan, replay key, konflik cart, sesi berbeda, SDK timeout dan persist gagal sesudah create. Expected invariant: satu key yang sama tidak membuat dua order atau dua pemanggilan create provider.
+
+Status validasi otomatis mengikuti laporan CI. Pembuatan transaksi Sandbox nyata membutuhkan konfigurasi provider dan [pengujian E2E](/docs/testing) terpisah; payload contoh di halaman ini bukan bukti transaksi sudah dibuat.
+
+## Troubleshooting
+
+- **401 session required:** inisialisasi sesi dan pastikan cookie same-origin ikut dikirim.
+- **409 setelah cart berubah:** request baru tidak boleh mereplay key dengan payload berbeda; hentikan attempt lama secara aman sebelum membuat percobaan baru.
+- **202 terus-menerus:** cek status attempt dan gunakan rekonsiliasi lokal, bukan mengganti key untuk menghindari pending.
+- **Harga frontend berbeda:** tampilkan ulang data katalog, tetapi server tetap memakai snapshot harga database.
+
+## Hasil Akhir
+
+Checkout memiliki kontrak request/response dan perlindungan retry yang jelas. Berikutnya, [hubungkan tombol pembayaran](/docs/payment-button) dengan endpoint ini.
+
+## Referensi
+
+- [Next.js Route Handlers](https://nextjs.org/docs/app/getting-started/route-handlers)
+- [Prisma transactions](https://www.prisma.io/docs/orm/prisma-client/queries/transactions)
+- [SDK Midtrans](https://github.com/Midtrans/midtrans-nodejs-client)

@@ -1,0 +1,96 @@
+Tutorial lokal yang berhasil belum otomatis menjadi backend pembayaran siap produksi. Website dokumentasi dapat dipublikasikan sebagai file statis, sementara backend transaksi membutuhkan persistence, proteksi abuse dan recovery operasional yang sesuai lingkungan hosting.
+
+## Tujuan Pembelajaran
+
+- Memahami kontrol keamanan yang tidak boleh dihilangkan saat menyederhanakan kode.
+- Membedakan deployment docs dari deployment aplikasi pembayaran.
+- Menentukan pemeriksaan sebelum menggunakan kredensial Production.
+
+## Prasyarat
+
+Anda telah mengikuti [pengujian Sandbox](/docs/testing), memahami hasil aktual dan keterbatasannya, serta membaca source checkout/webhook. Jangan memakai uang nyata untuk menggantikan test yang belum selesai.
+
+## Langkah 1 — Pertahankan batas secrets
+
+Server Key hanya berada pada environment server aplikasi pembayaran. Client Key untuk Popup boleh tersedia pada browser, tetapi dipisahkan dari Server Key dan lingkungan Sandbox/Production. Jangan menggunakan nilai fallback yang diam-diam mengaktifkan Production saat konfigurasi invalid.
+
+Docs build tidak membutuhkan Server Key atau database pembayaran. Pipeline yang memublikasikan tutorial tidak perlu diberi akses kredensial transaksi hanya karena berada dalam repository yang sama.
+
+Jika key masuk Git/log, lakukan rotasi dari perangkat yang tepercaya dan audit aksesnya. Menghapus key dari file saat ini saja tidak menghapus salinan di history, cache atau layanan lain.
+
+## Langkah 2 — Periksa kontrol checkout dan akses order
+
+<SourceCode path="lib/session.ts" />
+
+Cookie opaque digunakan sebagai akses order anonim, dengan HttpOnly, SameSite dan Secure yang sesuai lingkungan. Hash token disimpan server dan expiry diperiksa pada setiap pembacaan. Jangan menaruh token pemilik di query string atau log.
+
+Checkout tetap harus memiliki schema, body limit, Origin check, rate limit, harga database dan idempotensi. Header forwarded dari koneksi tak tepercaya tidak boleh membuat penyerang mengganti identitas limiter sesuka hati.
+
+Limiter memory lokal memiliki batas: restart menghapus kuota dan beberapa instance tidak berbagi state. Backend publik membutuhkan desain limiter bersama/ingress tepercaya yang diuji; tutorial ini tidak menambahkan Redis atau mengklaim limiter lokal cukup untuk semua deployment.
+
+## Langkah 3 — Periksa integritas pembayaran
+
+- Signature valid dan GET status terautentikasi sebelum perubahan status.
+- Nominal serta identitas transaksi cocok snapshot order.
+- Capture fraud challenge tidak menjadi PAID.
+- Event duplikat tidak menggandakan efek samping dan event lama tidak memundurkan status.
+- Refund kumulatif monoton dan tidak melebihi total.
+- SDK timeout serta DB failure sesudah create tetap diperlakukan sebagai hasil ambigu sampai terverifikasi.
+
+Gunakan log yang disanitasi untuk mendiagnosis masalah. Jangan menonaktifkan pemeriksaan nominal atau signature hanya agar simulator terlihat berhasil.
+
+## Langkah 4 — Pisahkan model hosting
+
+### Website dokumentasi
+
+`apps/docs` menggunakan static export. Hosting melayani HTML, CSS, JavaScript, search index dan aset. Seluruh chapter tersedia saat build; tidak ada request-dependent Route Handler, cookie authorization atau database runtime pada docs.
+
+```sh title="Terminal — build dokumentasi"
+pnpm --filter next-app build
+```
+
+Hasil static export berada pada output aplikasi docs. Sebelum release, periksa links, snippets, accessibility, metadata dan domain final. Publikasi dilakukan setelah quality gates serta persetujuan developer, dengan hosting sebagai langkah terakhir.
+
+### Aplikasi contoh pembayaran
+
+SQLite lokal membutuhkan file yang tetap tersedia. Filesystem sementara serverless bukan tempat yang tepat untuk menyimpan transaksi permanen. Sebelum memublikasikan backend, pilih persistence yang sesuai, migration/backup/restore, kontrol rate lintas instance, recovery yang dapat dijalankan operator, dan akses order yang cocok kebutuhan produk.
+
+Perubahan database/hosting tersebut adalah pekerjaan arsitektur tersendiri; jangan menganggap file SQLite contoh dapat langsung diletakkan pada deploy docs Vercel. Panduan ini tidak men-deploy backend pembayaran atau membuat dashboard merchant.
+
+## Penjelasan Kode
+
+Idempotensi checkout dan webhook menangani retry pada batas yang berbeda. Key checkout mencegah order/create ganda, sedangkan transisi/revision menjaga update status. Jika kelak ditambahkan email atau fulfillment, update row saja tidak menjamin efek eksternal terjadi tepat satu kali; perlu desain durable event/outbox yang sesuai.
+
+Jangan menyebut aplikasi bebas bug. Klaim yang dapat diperiksa adalah versi tertentu lulus command tertentu, matriks skenario sudah diperiksa, Sandbox yang relevan berhasil, dan tidak ada temuan kritis yang diketahui pada scope review.
+
+## Validasi dan Testing
+
+```sh title="Terminal"
+pnpm --filter payment-example lint
+pnpm --filter payment-example typecheck
+pnpm --filter payment-example test
+pnpm --filter payment-example build
+pnpm --filter next-app lint
+pnpm --filter next-app typecheck
+pnpm --filter next-app build
+```
+
+Sebelum release, pastikan CI juga memeriksa snippet, link internal dan smoke aksesibilitas. Periksa bundle/output/log untuk secrets, serta pastikan hanya aplikasi docs yang dipublikasikan. Hasil otomatis mengikuti CI; Sandbox manual dan readiness backend publik tetap terpisah dan tidak diklaim selesai oleh materi ini.
+
+## Troubleshooting
+
+- **Data hilang setelah redeploy:** periksa persistence backend; restore dari backup yang teruji, bukan membuat status dari callback browser.
+- **Limit mudah dilewati:** periksa shared state dan trust proxy; jangan mempercayai setiap forwarded header.
+- **Build docs meminta key pembayaran:** ada kebocoran boundary/import; pisahkan runtime docs dari aplikasi contoh.
+- **CSP memblokir script:** ukur kebutuhan script/font aktual dan gunakan allowlist tepat; jangan menambahkan wildcard atau `unsafe-eval` sebagai perbaikan umum.
+
+## Hasil Akhir
+
+Anda mengetahui apa yang sudah dicakup contoh lokal dan apa yang masih harus dirancang sebelum backend publik. Snap Redirect tetap alur utama; pelajari [Snap Popup opsional](/docs/snap-popup) jika pengalaman pembayaran di halaman diperlukan.
+
+## Referensi
+
+- [Midtrans production preparation](https://docs.midtrans.com/docs/going-live)
+- [Next.js static export](https://nextjs.org/docs/app/guides/static-exports)
+- [Vercel Hobby plan](https://vercel.com/docs/plans/hobby)
+- [Prisma production migration](https://www.prisma.io/docs/orm/prisma-migrate/workflows/development-and-production)

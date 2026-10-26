@@ -1,0 +1,88 @@
+Webhook adalah notifikasi server-ke-server yang membantu aplikasi mengetahui perubahan pembayaran walaupun browser pembeli telah ditutup. Endpoint publik ini harus memverifikasi asal, identitas, nominal dan status sebelum mengubah database.
+
+## Tujuan Pembelajaran
+
+- Memahami perbedaan webhook dan callback browser.
+- Memverifikasi signature Midtrans serta status melalui SDK.
+- Memproses event duplikat, terlambat dan concurrent tanpa merusak order.
+
+## Prasyarat
+
+[SDK](/docs/midtrans-sdk), [Checkout API](/docs/checkout-api), schema webhook dan database tersedia. Pengujian notifikasi nyata memerlukan tunnel HTTPS serta Notification URL dari [chapter testing](/docs/testing).
+
+## Langkah 1 — Periksa endpoint webhook
+
+<SourceCode path="app/api/midtrans/webhook/route.ts" />
+
+Handler menerima POST JSON di `/api/midtrans/webhook`, membatasi ukuran body lalu memvalidasi field wajib. Endpoint tidak memakai cookie pembeli dan tidak memerlukan Origin browser; Midtrans memanggilnya melalui server provider.
+
+Jangan mencetak seluruh body, signature atau Server Key. Log minimum berisi operasi, order ID yang diperlukan, kode hasil dan durasi, tanpa token atau kredensial.
+
+## Langkah 2 — Verifikasi signature dan GET status
+
+<SourceCode path="lib/verification.ts" />
+
+Signature SHA-512 dihitung dari konkatenasi string asli `order_id + status_code + gross_amount + serverKey`. Pertahankan formatting gross amount dari payload sebelum hashing; nilai `"50000.00"` dan `"50000"` memiliki string yang berbeda. Bandingkan digest dengan pemeriksaan panjang dan constant-time comparison.
+
+Sesudah signature valid, ambil status melalui SDK dengan kredensial server. Cocokkan order ID, transaction ID, gross amount snapshot dan fraud status. Respons jaringan juga perlu divalidasi runtime. Jangan mengambil URL fetch dari payload notifikasi.
+
+### Signature bukan satu-satunya pemeriksaan
+
+Notifikasi valid dapat datang untuk order yang tidak dikenal aplikasi, lingkungan berbeda, atau nominal yang tidak cocok. Order asing tidak dibuat otomatis. Nominal/identitas mismatch tidak boleh menghasilkan PAID walaupun payload lolos schema.
+
+## Langkah 3 — Terapkan transisi, bukan assignment bebas
+
+<SourceCode path="lib/payment-status.ts" />
+
+`settlement` terverifikasi dapat menjadi PAID. `capture` hanya menjadi PAID ketika fraud status diterima; challenge tetap membutuhkan pemeriksaan dan tidak langsung dianggap lunas. Cancel, expire dan failure dipetakan secara eksplisit sesuai status provider.
+
+Status PAID tidak turun ke PENDING akibat notifikasi lama. Refund/partial refund hanya bergerak sesuai jumlah kumulatif terverifikasi; jumlah refund tidak boleh menurun atau melebihi total. Event refund bisa diterima sebelum event PAID, sehingga logika menggunakan status provider terbaru, bukan mengasumsikan urutan ideal.
+
+## Langkah 4 — Commit lalu acknowledge
+
+Update Order dan Payment dilakukan atomik dengan pemeriksaan revision. Panggilan GET status berada di luar transaksi database agar koneksi jaringan tidak menahan lock SQLite.
+
+| Kondisi | Respons endpoint |
+| --- | --- |
+| Commit atau no-op terverifikasi selesai | 200 |
+| JSON/schema tidak valid | 400 |
+| Signature salah | 401 |
+| Body terlalu besar/media type salah | 413 / 415 |
+| Admission limit tercapai | 429 dengan Retry-After |
+| Provider timeout, DB gagal, konflik belum selesai | 503 |
+
+Jika commit gagal, jangan membalas sukses seolah event telah diproses. Kebijakan retry provider harus diverifikasi pada dokumentasi serta Sandbox; aplikasi tetap memerlukan rekonsiliasi lokal ketika notifikasi tertunda atau hasil tidak jelas.
+
+## Penjelasan Kode
+
+Pemrosesan identik menjadi no-op: duplikat tidak menjalankan perubahan status atau efek samping ulang. Contoh ini tidak memiliki email/fulfillment sehingga tidak membutuhkan queue/outbox. Menambah efek samping eksternal kelak memerlukan rancangan durable idempotency tersendiri.
+
+Callback frontend dapat dipalsukan dan tidak memegang Server Key. Karena itu callback hanya memperbarui tampilan/navigasi, sedangkan webhook dan rekonsiliasi memakai jalur verifikasi serta transisi yang sama.
+
+## Validasi dan Testing
+
+```sh title="Terminal"
+pnpm --filter payment-example test
+pnpm --filter payment-example typecheck
+```
+
+Periksa test signature valid/invalid, nominal mismatch, transaction ID berbeda, capture fraud challenge, notifikasi duplikat, out-of-order, conflict revision dan DB timeout. Expected result jalur gagal adalah tidak ada mutasi pembayaran yang tidak terverifikasi.
+
+Status validasi otomatis mengikuti laporan CI dengan SDK mock. Pengiriman ulang notifikasi Midtrans nyata dan variasi payload Sandbox harus dicatat melalui prosedur E2E; halaman ini tidak mengklaim tahap manual tersebut sudah lulus.
+
+## Troubleshooting
+
+- **401 meskipun order benar:** periksa key environment dan string asli yang dipakai menghitung signature.
+- **Provider retry berulang:** periksa status HTTP aktual serta kegagalan DB/provider; jangan mengubah semua error menjadi 200 untuk menghentikan retry.
+- **Tidak PAID saat capture:** cek fraud status dan nominal; jangan menonaktifkan pemeriksaan tersebut.
+- **Order terlambat berubah:** jalankan rekonsiliasi terkontrol, bukan edit database manual berdasarkan screenshot pembayaran.
+
+## Hasil Akhir
+
+Webhook hanya menyimpan perubahan yang tervalidasi dan aman terhadap notifikasi ulang. Lanjutkan ke [status pembayaran](/docs/payment-status) untuk menampilkan hasil kepada pemilik order.
+
+## Referensi
+
+- [Midtrans HTTP notifications dan signature](https://docs.midtrans.com/docs/https-notification-webhooks)
+- [Midtrans transaction status](https://docs.midtrans.com/reference/get-transaction-status)
+- [SDK Midtrans Node.js](https://github.com/Midtrans/midtrans-nodejs-client)

@@ -1,0 +1,4 @@
+generated/
+prisma/*.db
+prisma/*.db-*
+!.env.example

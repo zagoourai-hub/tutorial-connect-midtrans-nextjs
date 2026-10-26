@@ -1,5 +1,5 @@
 # dependencies
-/node_modules
+node_modules/
 /.pnp
 .pnp.*
 .yarn/*
@@ -9,18 +9,25 @@
 !.yarn/versions
 
 # testing
-/coverage
+coverage/
+playwright-report/
+test-results/
+.playwright-mcp/
 
 # next.js
-/.next/
-/out/
+.next/
+out/
 
 # production
-/build
+build/
 
 # misc
 .DS_Store
 *.pem
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
 
 # debug
 npm-debug.log*
@@ -30,6 +37,8 @@ pnpm-debug.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
+apps/payment-example/generated/
 
 # vercel
 .vercel

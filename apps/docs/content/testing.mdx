@@ -1,0 +1,99 @@
+Pengujian otomatis dengan SDK mock membuktikan logika aplikasi pada kondisi yang dikendalikan. Sandbox menambahkan bukti bahwa kredensial, payload, halaman Snap, tunnel dan notifikasi provider benar-benar terhubung. Kedua jenis pengujian harus dibedakan dalam laporan.
+
+## Tujuan Pembelajaran
+
+- Menjalankan satu transaksi Sandbox dari checkout sampai database berubah.
+- Menghubungkan Notification URL melalui tunnel HTTPS.
+- Menyusun bukti pengujian tanpa menampilkan key atau data sensitif.
+
+## Prasyarat
+
+Seluruh chapter sebelumnya selesai, key Sandbox aktif, database lokal telah di-migrate/seed, dan aplikasi contoh berjalan di port 3001. Siapkan alat tunnel HTTPS yang Anda percayai dengan tujuan `http://localhost:3001`; ikuti instalasi resminya dan kebijakan perangkat Anda.
+
+## Langkah 1 — Jalankan checks otomatis terlebih dahulu
+
+```sh title="Terminal"
+pnpm --filter payment-example db:generate
+pnpm --filter payment-example test
+pnpm --filter payment-example lint
+pnpm --filter payment-example typecheck
+pnpm --filter payment-example build
+```
+
+Expected result: seluruh command relevan selesai tanpa error. Baca output aktual dan bedakan warning dengan error. Jangan menyebut hasil mock sebagai “transaksi Midtrans berhasil”. Test memakai database sementara; jika test menyentuh database development, hentikan dan perbaiki isolasinya sebelum lanjut.
+
+## Langkah 2 — Nyalakan aplikasi dan tunnel
+
+```sh title="Terminal pertama"
+pnpm --filter payment-example dev
+```
+
+Pada terminal lain, jalankan tunnel sesuai dokumentasi provider tunnel untuk port 3001. Catat origin HTTPS yang diperoleh. URL publik tersebut adalah alamat sementara aplikasi contoh, **bukan** domain website dokumentasi.
+
+Atur Notification URL Sandbox ke origin tunnel ditambah `/api/midtrans/webhook`. URL harus dapat dicapai dari internet dan tidak membutuhkan login browser, basic-auth tunnel, atau interstitial yang menghalangi request provider. Jika origin aplikasi untuk checkout juga menggunakan tunnel, perbarui `APP_ORIGIN` agar sama dan restart server.
+
+## Langkah 3 — Buat satu order dari browser
+
+1. Buka `/checkout` melalui origin aplikasi yang konsisten.
+2. Pastikan katalog terlihat dan sesi anonim berhasil dibuat.
+3. Klik Bayar sekali; catat order ID dari response/UI tanpa mencatat token.
+4. Browser diarahkan ke Snap Sandbox.
+5. Pilih metode yang didukung dan selesaikan pembayaran menggunakan petunjuk simulator resmi.
+6. Kembali ke halaman status dengan browser/sesi yang sama.
+
+Membuka URL halaman sukses tidak cukup. Periksa webhook menerima respons yang sesuai dan database berubah berdasarkan hasil verifikasi provider. Jika provider belum mengirim notifikasi, status dapat tetap PENDING meskipun browser sudah kembali.
+
+## Langkah 4 — Periksa data dan notifikasi
+
+Gunakan Prisma Studio hanya pada lingkungan lokal yang Anda kendalikan:
+
+```sh title="Terminal lokal"
+pnpm --filter payment-example exec prisma studio
+```
+
+Cocokkan order ID, nominal snapshot, provider transaction ID dan paymentStatus. Jangan membuka Studio sebagai alat administrasi publik. Tutup setelah pemeriksaan dan jangan menyertakan cookie/keys pada screenshot bukti.
+
+Jika dashboard Sandbox menyediakan pengiriman ulang notifikasi, kirim ulang event untuk order yang sama. Expected result: response sukses/no-op terverifikasi dan tidak ada perubahan yang menggandakan efek samping. Ketersediaan fitur simulator berbeda menurut metode; catat keterbatasannya secara eksplisit.
+
+## Langkah 5 — Lengkapi matriks skenario
+
+| Skenario | Expected result |
+| --- | --- |
+| Settlement/capture fraud accept | PAID setelah verifikasi server |
+| Pending | Tetap PENDING, bukan PAID dari callback |
+| Cancel/expire/failure | Status internal sesuai provider |
+| Signature invalid | Ditolak tanpa mutasi order |
+| Nominal mismatch | Tidak menjadi PAID |
+| Webhook duplikat/out-of-order | No-op atau transisi aman |
+| Create timeout/network putus | Attempt dipertahankan, tidak create ulang otomatis |
+| Token sesi salah/expired | Detail order tidak terbuka |
+| Refund/partial refund | Status dan nominal kumulatif sesuai data terverifikasi |
+
+Kasus signature salah, race dan fault injection lebih tepat diotomasi dengan fixtures. Untuk variasi refund atau fraud yang tidak didukung simulator akun Anda, pertahankan test otomatis dan tandai **belum terverifikasi di Sandbox**, bukan mencentang hasil manual yang tidak terjadi.
+
+## Penjelasan Kode
+
+Notifikasi provider membutuhkan server lokal tetap hidup dan tunnel aktif. URL tunnel yang berubah membuat konfigurasi lama tidak berguna. GET status lokal tidak menggantikan pemeriksaan delivery webhook, karena keduanya membuktikan jalur integrasi yang berbeda.
+
+Simpan laporan berupa tanggal, versi dependency, environment, metode pembayaran, order ID yang disanitasi, langkah, expected result, actual result dan keterbatasan. Jangan memublikasikan Server Key, Snap token, signature, full redirect URL atau raw notifikasi.
+
+## Validasi dan Testing
+
+Halaman ini merupakan prosedur pengujian. Status hasil otomatis mengikuti laporan CI repository; transaksi Sandbox manual belum dinyatakan lulus sampai Anda menjalankan langkahnya dan mencatat actual result. Ulangi skenario yang terdampak ketika versi SDK, schema atau logika status berubah.
+
+## Troubleshooting
+
+- **Webhook timeout/404:** pastikan tunnel menunjuk aplikasi contoh dan path persis benar.
+- **Tunnel sukses di browser tetapi provider gagal:** periksa interstitial/auth/rule ingress dan log status HTTP aktual.
+- **Database tidak berubah:** telusuri signature, lookup order, nominal dan GET status; jangan langsung mengubah row manual.
+- **Order baru muncul saat retry:** periksa idempotency key dan unique constraint; UI loading saja tidak cukup.
+
+## Hasil Akhir
+
+Anda memiliki bukti terpisah untuk pengujian otomatis dan integrasi Sandbox, termasuk skenario yang belum dapat dibuktikan. Berikutnya, pahami [batas keamanan dan production](/docs/production) sebelum memublikasikan apa pun.
+
+## Referensi
+
+- [Midtrans Sandbox testing](https://docs.midtrans.com/docs/testing-payment-on-sandbox)
+- [Midtrans HTTP notifications](https://docs.midtrans.com/docs/https-notification-webhooks)
+- [Prisma Studio](https://www.prisma.io/docs/orm/tools/prisma-studio)

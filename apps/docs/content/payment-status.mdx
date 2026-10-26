@@ -1,0 +1,88 @@
+Halaman status menjawab pertanyaan “bagaimana kondisi order saya?” berdasarkan database yang telah diperbarui server. Status di query string, callback browser, atau screenshot pembayaran tidak menjadi bukti untuk mengubah order.
+
+## Tujuan Pembelajaran
+
+- Membaca status pembayaran dari Prisma untuk pemilik order.
+- Memahami status pending, berhasil, gagal, batal, expired dan refund.
+- Melakukan rekonsiliasi lokal ketika hasil create atau notifikasi masih ambigu.
+
+## Prasyarat
+
+[Checkout](/docs/checkout-api) dan [webhook](/docs/webhook) tersedia. Gunakan browser/sesi yang membuat order; menghapus cookie dapat menghilangkan akses karena contoh ini tidak menyediakan akun/login.
+
+## Langkah 1 — Baca halaman status server
+
+<SourceCode path="app/checkout/status/page.tsx" />
+
+Halaman menerima order ID untuk lookup, lalu memeriksa cookie, hash pemilik dan batas waktu akses sebelum menampilkan detail. ID order yang sulit ditebak tidak menggantikan authorization check. Order tidak ada, token salah, dan token expired menghasilkan respons 404 generik agar tidak membocorkan keberadaan order.
+
+Detail privat menggunakan no-store dan noindex. Jangan memasukkan route status aplikasi contoh ke sitemap website docs atau cache publik.
+
+## Langkah 2 — Pahami seluruh status internal
+
+| Status | Arti untuk pembeli |
+| --- | --- |
+| PENDING | Pembayaran belum terkonfirmasi; tunggu/verifikasi, bukan langsung order baru |
+| PAID | Server telah menerima status pembayaran yang terverifikasi |
+| FAILED | Provider mengonfirmasi kegagalan yang dipetakan aplikasi |
+| CANCELED | Pembatalan dikonfirmasi provider |
+| EXPIRED | Masa pembayaran berakhir menurut provider |
+| PARTIALLY_REFUNDED | Sebagian nominal telah dikembalikan dan terverifikasi |
+| REFUNDED | Pengembalian penuh telah terverifikasi |
+
+Menutup popup atau menekan Back tidak otomatis berarti CANCELED. Demikian pula, redirect kembali dengan status sukses tidak mengubah PENDING menjadi PAID. UI menampilkan label dengan teks, bukan warna saja.
+
+## Langkah 3 — Refresh dari database
+
+Refresh manual memuat ulang status tersimpan. Jangan menjadikan setiap refresh browser sebagai GET status ke provider; itu membuka jalur request mahal dan dapat terkena batas API. Verifikasi provider dijalankan webhook atau rekonsiliasi terkontrol.
+
+Jika webhook telah commit PAID, refresh menampilkan PAID. Jika masih PENDING, tampilkan instruksi menunggu dan pemeriksaan, bukan janji bahwa pembayaran pasti gagal atau pasti sukses.
+
+## Langkah 4 — Jalankan rekonsiliasi lokal
+
+<SourceCode path="lib/reconcile.ts" />
+
+Jalankan command dari root dengan order ID milik percobaan yang sedang diperiksa:
+
+```sh title="Terminal"
+pnpm --filter payment-example reconcile -- ord_yang_sedang_diperiksa
+```
+
+Ganti argumen contoh dengan ID order aktual, tanpa memasukkan cookie atau Server Key ke command line. Rekonsiliasi memakai fungsi verifikasi/transisi bersama; command tidak membuat transaksi baru dan tidak menganggap error jaringan sebagai bukti gagal bayar.
+
+### Batas pemulihan token dan URL
+
+GET status tidak selalu mengembalikan token atau redirect URL Snap yang hilang. Jika proses terputus setelah provider menerima create tetapi sebelum URL tersimpan, hasil dapat tetap ambigu. Pertahankan order/key, periksa Sandbox dan ikuti instruksi recovery; jangan membuat URL atau status sukses sendiri.
+
+## Penjelasan Kode
+
+Nominal refund diperlakukan kumulatif dan tidak boleh menurun akibat event lama. Refund yang diterima lebih dulu daripada notifikasi PAID dapat diproses ketika status provider terbaru membuktikan transaksi yang sama. Tidak ada endpoint browser untuk meminta refund dalam tutorial ini; chapter menjelaskan penerimaan status refund, bukan fitur administrasi merchant.
+
+Sesi anonim hanya membuktikan kepemilikan token browser, bukan identitas seseorang. Batas masa akses dan hilangnya cookie perlu dijelaskan kepada pengguna. Aplikasi produksi dengan kebutuhan pemulihan identitas membutuhkan desain terpisah.
+
+## Validasi dan Testing
+
+```sh title="Terminal"
+pnpm --filter payment-example test
+```
+
+Periksa tujuh enum status, sesi berbeda, expiry, callback spoof, duplicate refund dan conflict revision. Tambahkan query `transaction_status=settlement` pada halaman status order PENDING: hasil yang benar tetap PENDING dan database tidak berubah.
+
+Hasil otomatis mengikuti CI. Rekonsiliasi/provider refund Sandbox manual belum diklaim lulus oleh materi ini; catat perbedaan metode/provider yang tersedia pada akun uji Anda.
+
+## Troubleshooting
+
+- **404 pada order yang pernah dibuat:** periksa browser, cookie dan expiry; jangan menghapus ownership check untuk membuka order.
+- **PAID berubah menjadi PENDING:** ini pelanggaran transisi; periksa logic event lama, bukan frontend label saja.
+- **Rekonsiliasi timeout:** pertahankan status sebelumnya dan retry sesuai limit, tanpa membuat transaksi baru.
+- **Refund tidak tersedia di simulator:** bedakan test transisi dengan fixture dan bukti refund provider nyata; jangan menyebut keduanya sama.
+
+## Hasil Akhir
+
+Pemilik dapat melihat status tersimpan dengan aman, dan developer memiliki jalur rekonsiliasi terkontrol. Lanjutkan ke [pengujian Sandbox](/docs/testing) untuk memverifikasi alur nyata.
+
+## Referensi
+
+- [Midtrans transaction status](https://docs.midtrans.com/reference/get-transaction-status)
+- [Midtrans HTTP notifications](https://docs.midtrans.com/docs/https-notification-webhooks)
+- [Prisma querying](https://www.prisma.io/docs/orm/prisma-client/queries)

@@ -1,0 +1,15 @@
+[
+  {"slug":"introduction","title":"Pengantar Midtrans","description":"Kenali Snap, alur pembayaran, dan arsitektur aplikasi yang akan kita bangun.","group":"Pengenalan","minutes":6},
+  {"slug":"setup","title":"Setup Next.js","description":"Siapkan Node.js, pnpm, TypeScript, dan struktur project contoh.","group":"Persiapan project","minutes":8},
+  {"slug":"midtrans-setup","title":"Konfigurasi Midtrans","description":"Siapkan akun Sandbox, Server Key, Client Key, dan environment yang aman.","group":"Persiapan project","minutes":7},
+  {"slug":"prisma","title":"Prisma dan SQLite","description":"Bangun model produk, order, item, dan pembayaran dengan Prisma.","group":"Persiapan project","minutes":12},
+  {"slug":"validation","title":"Validasi dengan Zod","description":"Validasi checkout dan webhook di batas kepercayaan aplikasi.","group":"Persiapan project","minutes":9},
+  {"slug":"midtrans-sdk","title":"Midtrans SDK","description":"Konfigurasikan SDK resmi dan pahami token serta redirect URL Snap.","group":"Implementasi","minutes":10},
+  {"slug":"checkout-api","title":"Checkout API","description":"Hitung harga di server dan buat transaksi checkout yang idempotent.","group":"Implementasi","minutes":14},
+  {"slug":"payment-button","title":"Tombol Pembayaran","description":"Hubungkan antarmuka pembeli ke checkout dengan Snap Redirect.","group":"Implementasi","minutes":9},
+  {"slug":"webhook","title":"Webhook","description":"Verifikasi notifikasi Midtrans dan perbarui pembayaran secara atomik.","group":"Implementasi","minutes":15},
+  {"slug":"payment-status","title":"Status Pembayaran","description":"Tampilkan status order dengan akses yang aman dan lakukan rekonsiliasi.","group":"Implementasi","minutes":10},
+  {"slug":"testing","title":"Sandbox Testing","description":"Uji transaksi, tunnel HTTPS, webhook, dan skenario kegagalan.","group":"Pengujian","minutes":12},
+  {"slug":"production","title":"Keamanan dan Produksi","description":"Pahami keamanan, persistence, rate limit, serta batas deployment.","group":"Produksi","minutes":11},
+  {"slug":"snap-popup","title":"Snap Popup","description":"Pelajari alternatif popup dan batas kepercayaan callback frontend.","group":"Tambahan","minutes":8}
+]

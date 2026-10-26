@@ -1,0 +1,84 @@
+Pelajari integrasi Midtrans dari pembuatan order sampai status pembayaran terverifikasi. Tutorial ini memakai Next.js, TypeScript, Prisma, SQLite, Zod, dan SDK resmi Midtrans. Mulai dari alur pembayaran terlebih dahulu agar setiap endpoint memiliki tanggung jawab yang jelas.
+
+## Tujuan Pembelajaran
+
+- Membedakan website dokumentasi dengan aplikasi contoh pembayaran.
+- Memahami Snap Redirect, Snap Popup, webhook, dan lingkungan Sandbox.
+- Menentukan sumber kebenaran pembayaran sebelum menulis kode.
+
+## Prasyarat
+
+Anda sudah memahami fungsi JavaScript, `async`/`await`, HTTP request/response, dan dasar React. Akun Midtrans belum diperlukan untuk membaca pengantar; diperlukan ketika menguji transaksi Sandbox.
+
+## Langkah 1 — Kenali dua aplikasi
+
+Repository memiliki dua aplikasi dengan tujuan berbeda:
+
+```text title="Struktur workspace"
+apps/docs/             → website tutorial statis
+apps/payment-example/  → aplikasi pembayaran lokal dengan database
+```
+
+Website yang sedang Anda baca menyajikan konten MDX dan pencarian di browser. Website ini tidak membuat transaksi, menyimpan order pengunjung, atau menjalankan webhook. Aplikasi contoh memiliki server Next.js, database SQLite lokal, dan kredensial Sandbox milik Anda sendiri.
+
+## Langkah 2 — Ikuti perjalanan satu order
+
+1. Browser mengirim product ID dan quantity ke checkout API.
+2. Server memvalidasi request, mengambil harga dari database, lalu menyimpan order `PENDING`.
+3. Server membuat transaksi Snap menggunakan Server Key.
+4. Browser diarahkan ke halaman Midtrans melalui `redirect_url`.
+5. Midtrans mengirim notifikasi ke webhook aplikasi.
+6. Server memverifikasi signature, mengambil status dari Midtrans, dan mencocokkan nominal serta identitas order.
+7. Database diperbarui secara atomik. Halaman status membaca hasil tersimpan dengan pemeriksaan akses pemilik.
+
+```text title="Alur pembayaran"
+Browser → Checkout API → Prisma → Midtrans Snap
+                                 ↓
+Browser ← Halaman status ← Webhook terverifikasi
+```
+
+Browser dapat ditutup sebelum redirect kembali. Karena itu status pembayaran tidak boleh bergantung pada apakah pembeli melihat halaman sukses.
+
+## Langkah 3 — Pilih Redirect terlebih dahulu
+
+Snap menyediakan halaman pembayaran siap pakai. **Redirect** membuka halaman tersebut melalui navigasi browser dan menjadi implementasi utama tutorial ini. **Popup** membuka antarmuka Snap di atas halaman aplikasi menggunakan Snap.js dan Client Key; alternatifnya dipelajari di [chapter tambahan](/docs/snap-popup).
+
+Keduanya tetap membutuhkan checkout server dan webhook. Callback popup seperti `onSuccess` hanya sinyal untuk memperbarui tampilan; callback tersebut tidak memberi browser hak mengubah order menjadi `PAID`.
+
+### Sandbox dan Production
+
+Sandbox adalah lingkungan pengujian terpisah dengan kredensial serta simulator pembayaran sendiri. Production menggunakan kredensial dan pemrosesan pembayaran nyata. Jangan memasangkan Server Key Sandbox dengan endpoint Production, atau mengaktifkan Production hanya karena build menggunakan `NODE_ENV=production`.
+
+## Penjelasan Kode
+
+Order menyimpan snapshot nama, harga, quantity, dan total pada saat checkout. Payment menyimpan hasil pembuatan Snap dan status provider terakhir. Pemisahan `paymentStatus` dari status pembuatan Snap penting: koneksi yang timeout tidak membuktikan bahwa Midtrans gagal membuat transaksi.
+
+Satu idempotency key mengidentifikasi satu percobaan checkout. Request ulang dengan key yang sama memeriksa order existing, sehingga double click atau retry jaringan tidak langsung membuat order kedua.
+
+## Validasi dan Testing
+
+Setelah [setup project](/docs/setup), jalankan aplikasi contoh dari root repository:
+
+```sh title="Terminal"
+pnpm --filter payment-example dev
+```
+
+Buka `http://localhost:3001/checkout`. Cocokkan setiap aksi browser dengan alur di atas. Pada tahap pengantar, jangan menyimpulkan transaksi berhasil hanya dari URL atau pesan frontend.
+
+Status validasi: pemeriksaan otomatis dan versi dependency mengikuti laporan CI repository. Transaksi Sandbox manual belum diverifikasi melalui materi ini; ikuti [prosedur pengujian](/docs/testing) dan catat hasil aktual Anda.
+
+## Troubleshooting
+
+- **Halaman dokumentasi tidak memiliki tombol bayar nyata:** memang benar; jalankan aplikasi `payment-example` secara terpisah.
+- **Order masih PENDING setelah kembali dari Midtrans:** cek webhook dan status database; redirect bukan bukti pembayaran.
+- **Ada pesan timeout:** pertahankan order ID dan idempotency key. Jangan langsung mencoba checkout baru sebelum status attempt lama diketahui.
+
+## Hasil Akhir
+
+Anda dapat menjelaskan perbedaan checkout, webhook, dan callback, serta mengetahui mengapa harga dan status harus diverifikasi server. Berikutnya, [siapkan workspace](/docs/setup) sebelum menambahkan kredensial.
+
+## Referensi
+
+- [Midtrans Snap — panduan integrasi](https://docs.midtrans.com/docs/snap-snap-integration-guide)
+- [Midtrans HTTP notifications](https://docs.midtrans.com/docs/https-notification-webhooks)
+- [Next.js App Router](https://nextjs.org/docs/app)

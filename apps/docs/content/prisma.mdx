@@ -1,0 +1,89 @@
+Prisma menghubungkan kode TypeScript dengan database SQLite lokal. Model menyimpan snapshot order dan status pembayaran, sehingga tampilan tidak bergantung pada data yang dikirim ulang oleh browser.
+
+## Tujuan Pembelajaran
+
+- Memahami konfigurasi Prisma 7 dan SQLite driver adapter.
+- Menjalankan generate, migration dan seed secara terurut.
+- Mengenali relasi Product, Order, OrderItem dan Payment beserta enum pembayaran.
+
+## Prasyarat
+
+Node/pnpm dan env dari [chapter sebelumnya](/docs/midtrans-setup). `DATABASE_URL` menunjuk file SQLite lokal. Kerjakan pada database belajar; jangan menguji migration/reset pada data transaksi yang perlu dipertahankan.
+
+## Langkah 1 — Kenali dependency database
+
+Repository menggunakan Prisma, Prisma Client, dan `@prisma/adapter-better-sqlite3` versi 7.10.1. Versi exact ada di `apps/payment-example/package.json` serta lockfile root. Gunakan versi yang sinkron; meng-upgrade salah satunya tanpa menguji ulang adapter dapat memutus runtime.
+
+Saat membangun project terpisah, dependency ditambahkan ke package aplikasi contoh, bukan ke website dokumentasi. Pada repository tutorial, dependency sudah dideklarasikan sehingga cukup menjalankan install workspace yang dijelaskan pada setup.
+
+## Langkah 2 — Baca konfigurasi Prisma
+
+Prisma 7 memisahkan konfigurasi CLI dari schema. File ini menjelaskan lokasi schema, migration, dan koneksi untuk command database:
+
+<SourceCode path="prisma.config.ts" />
+
+Schema berikut menjadi sumber model dan generated types:
+
+<SourceCode path="prisma/schema.prisma" />
+
+Product menyimpan katalog aktif dan harga server. Order menyimpan total, pemilik anonim, key idempotensi dan status internal. OrderItem menyimpan snapshot nama, harga, quantity dan subtotal. Payment memiliki satu relasi unik per order, token/URL Snap serta status provider yang terverifikasi.
+
+### Enum pembayaran
+
+`PENDING`, `PAID`, `FAILED`, `CANCELED`, `EXPIRED`, `REFUNDED` dan `PARTIALLY_REFUNDED` adalah status internal aplikasi. Enum membantu membatasi nilai yang dipakai kode; jangan menyimpulkan SQLite menyediakan native enum yang sama seperti semua database lain. Constraint dan transisi tetap harus diuji pada adapter yang dipakai.
+
+## Langkah 3 — Generate, migrate dan seed
+
+Jalankan dari root workspace setelah env tersedia:
+
+```sh title="Terminal"
+pnpm --filter payment-example db:generate
+pnpm --filter payment-example db:migrate
+pnpm --filter payment-example db:seed
+```
+
+Generate menghasilkan Prisma Client dari schema. Migration menerapkan struktur database. Seed mengisi katalog demo secara idempotent; seed kedua tidak boleh menggandakan produk atau menghapus order existing.
+
+```sh title="Terminal — periksa schema"
+pnpm --filter payment-example exec prisma validate
+```
+
+Hasil yang diharapkan: schema valid dan command selesai tanpa error. Periksa database tujuan sebelum menjawab prompt migration; jangan menggunakan reset sebagai langkah rutin ketika menemukan masalah.
+
+## Langkah 4 — Buat Prisma Client dengan adapter
+
+<SourceCode path="lib/prisma.ts" />
+
+Client ini dipakai bersama oleh modul server. Jangan mengimpor Prisma ke Client Component. Driver SQLite membutuhkan runtime Node.js dan filesystem persisten selama aplikasi berjalan; bukan runtime website docs statis.
+
+## Penjelasan Kode
+
+Harga menggunakan integer rupiah. `subtotal = unitPrice × quantity`, kemudian total adalah penjumlahan subtotal dengan batas yang divalidasi server. Menyimpan snapshot mencegah perubahan harga katalog merusak riwayat order.
+
+Unique idempotency key memastikan satu reservasi checkout, sedangkan unique `Payment.orderId` menjaga satu attempt per order. Foreign key dan transaksi memastikan order, items, dan payment awal tersimpan bersama atau rollback bersama. Panggilan jaringan Midtrans tidak dilakukan sambil menahan transaksi SQLite.
+
+## Validasi dan Testing
+
+```sh title="Terminal"
+pnpm --filter payment-example test
+pnpm --filter payment-example typecheck
+```
+
+Periksa test constraint unik, foreign key, rollback, snapshot harga dan seed dua kali pada database sementara. Test tidak boleh mereset file database development Anda. Status validasi mengikuti laporan CI; hasil migration pada mesin Anda harus dicatat dengan versi Node/Prisma yang digunakan.
+
+## Troubleshooting
+
+- **Generated client tidak ditemukan:** jalankan `db:generate` setelah schema berubah.
+- **Adapter/native binary gagal dimuat:** cocokkan Node, platform dan versi driver; jangan menutupi error dengan client dummy.
+- **Path SQLite berbeda dari perkiraan:** jalankan command dari workspace/package yang benar dan periksa konfigurasi URL absolut/relatif pada source.
+- **Enum atau migration tidak didukung:** cocokkan Prisma/adapter terkunci; laporkan blocker alih-alih mengganti schema menjadi string bebas tanpa validasi.
+
+## Hasil Akhir
+
+Empat model dan katalog demo tersedia di SQLite lokal, dengan Prisma Client bertipe. Selanjutnya, [validasi request memakai Zod](/docs/validation) sebelum data jaringan mencapai database.
+
+## Referensi
+
+- [Prisma ORM — SQLite](https://www.prisma.io/docs/orm/overview/databases/sqlite)
+- [Upgrade ke Prisma ORM 7](https://www.prisma.io/docs/orm/more/upgrade-guides/upgrading-versions/upgrading-to-prisma-7)
+- [Prisma Migrate](https://www.prisma.io/docs/orm/prisma-migrate)

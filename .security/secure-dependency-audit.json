@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "timestamp": "2026-10-26T06:50:37.520Z",
+  "root": "D:\\Project\\project\\learning-nextjs\\connect-midtrans",
+  "verdict": "SAFE_NO_KNOWN_IOC",
+  "iocSnapshot": {
+    "source": "https://raw.githubusercontent.com/wiz-sec-public/wiz-research-iocs/refs/heads/main/reports/keyv-packages.csv",
+    "fetchedAt": "2026-10-26T06:50:32.439Z",
+    "sha256": "138c7a54f25d90ae339f4de652c49bd663c0a8a4accbf921707178b0e90330a0",
+    "exactPairs": 2317
+  },
+  "lockfile": {
+    "path": "pnpm-lock.yaml",
+    "sha256": "1b2b013ac3adc515c4c7b8b3ea1fb04d4979059f596cb403dd132e1bdfe8ed93"
+  },
+  "findings": [],
+  "completedStages": {
+    "packageCount": 968,
+    "manifests": 2428,
+    "files": 94851,
+    "unavailableInstalledLinks": 0
+  },
+  "scannerVersion": "task002-readonly-1"
+}

@@ -1,0 +1,81 @@
+Snap Popup adalah alternatif untuk menampilkan pembayaran tanpa meninggalkan halaman aplikasi. Backend checkout, harga server dan webhook tetap sama; yang berubah adalah cara browser membuka sesi Snap dan menangani interaksi pengguna.
+
+## Tujuan Pembelajaran
+
+- Memuat Snap.js dari lingkungan yang benar dengan Client Key.
+- Memakai Snap token yang diperoleh dari checkout server.
+- Menangani callback Popup tanpa menjadikannya bukti pembayaran.
+
+## Prasyarat
+
+Alur [Snap Redirect](/docs/payment-button) dan [webhook](/docs/webhook) telah dipahami. Client Key Sandbox tersedia pada environment aplikasi contoh. Jangan memindahkan Server Key ke browser untuk menghindari panggilan checkout.
+
+## Langkah 1 — Kenali script dan key browser
+
+Lingkungan Sandbox memakai script `https://app.sandbox.midtrans.com/snap/snap.js`; Production memakai host resmi sesuai konfigurasi Production. Client Key dipasang sebagai `data-client-key` pada script.
+
+Script perlu dimuat satu kali dan memiliki state siap/gagal. Tombol Popup tidak aktif sampai script dan sesi browser siap. Jangan menggunakan `any` untuk menyembunyikan tipe `window.snap`; deklarasikan kemampuan yang benar-benar dipakai dan validasi ketersediaannya saat runtime.
+
+## Langkah 2 — Baca komponen Popup
+
+<SourceCode path="components/snap-popup-button.tsx" />
+
+Komponen memperoleh token dari Checkout API milik aplikasi, bukan membuat token di browser. Respons token hanya boleh dibaca pemilik order. URL script dan environment harus cocok dengan key serta token; jangan mencampur script Production dengan token Sandbox.
+
+## Langkah 3 — Panggil Snap dari hasil checkout
+
+Setelah script siap dan response checkout tervalidasi, `window.snap.pay(token, callbacks)` membuka antarmuka pembayaran. Loading dan error state tetap dibutuhkan; kegagalan script, token invalid, popup ditutup dan jaringan checkout gagal adalah kondisi yang berbeda.
+
+Idempotency key mengikuti aturan yang sama dengan Redirect. Bila request create timeout, jangan mencoba key baru hanya karena popup belum muncul. Periksa order existing dan status attempt lebih dulu.
+
+### Arti callback
+
+| Callback | Tindakan UI yang aman |
+| --- | --- |
+| `onSuccess` | Buka/refresh halaman status yang membaca database |
+| `onPending` | Jelaskan pembayaran belum selesai dan tampilkan status tersimpan |
+| `onError` | Tampilkan pesan aman dan arahkan pemeriksaan order bila diperlukan |
+| `onClose` | Jelaskan popup ditutup; jangan otomatis mengubah order menjadi CANCELED |
+
+Callback dapat dijalankan atau dipalsukan dari browser. Tidak satu pun callback memberi izin langsung untuk melakukan update `paymentStatus=PAID`. Webhook/reconciliation tetap harus memverifikasi provider.
+
+## Langkah 4 — Pilih kapan memakai Popup
+
+Redirect memiliki integrasi browser lebih sederhana: server mengembalikan URL dan browser melakukan navigasi. Popup menjaga konteks halaman tetapi menambah script pihak ketiga, readiness/error state, typing browser, dan kebijakan CSP.
+
+Website dokumentasi tidak perlu memuat Snap.js. Kebijakan script aplikasi contoh boleh berbeda; jangan melonggarkan CSP docs hanya agar Popup demo backend berjalan. Gunakan allowlist host resmi yang diperlukan dan uji perubahan tersebut.
+
+## Penjelasan Kode
+
+Popup memakai backend yang sama agar tidak ada dua implementasi perhitungan harga, idempotensi dan akses order yang saling menyimpang. Token Snap sensitif terhadap sesi pembayaran dan tidak boleh masuk log/analytics. Client Key yang tersedia pada browser bukan Server Key dan tidak memiliki peran verifikasi webhook.
+
+Jika script gagal atau diblokir browser, UI harus memberi pesan yang dapat dipahami; jangan mengeksekusi script dari URL alternatif tak tepercaya. Redirect tetap dapat menjadi pilihan alur utama yang lebih sederhana.
+
+## Validasi dan Testing
+
+```sh title="Terminal"
+pnpm --filter payment-example test
+pnpm --filter payment-example typecheck
+pnpm --filter payment-example dev
+```
+
+Uji load sukses/gagal, tombol sebelum script ready, response checkout invalid, callback palsu dan close sebelum pembayaran. Expected result: database tidak berubah menjadi PAID dari callback, sesi lain tidak dapat mengambil token, dan alur Redirect tetap bekerja.
+
+Transaksi Popup Sandbox manual belum dinyatakan lulus oleh materi ini. Jalankan prosedur [Sandbox Testing](/docs/testing), tambahkan verifikasi script/key/token pada environment yang sama, dan catat hasil actual beserta versi dependency.
+
+## Troubleshooting
+
+- **`window.snap` belum tersedia:** tunggu event script ready dan pastikan script tidak diblokir CSP/network.
+- **Invalid token:** cocokkan environment, pemilik order dan hasil checkout; jangan mencetak token ke log untuk debugging publik.
+- **Status tetap PENDING setelah onSuccess:** periksa webhook dan database, bukan memaksa status dari callback.
+- **Popup ditutup:** beri jalur melihat status order; penutupan UI tidak membuktikan provider membatalkan transaksi.
+
+## Hasil Akhir
+
+Anda memiliki alternatif Popup yang berbagi backend dengan Redirect dan menjaga pembayaran tetap diverifikasi server. Kedua alur harus melewati quality gates yang sama sebelum perubahan dipublikasikan.
+
+## Referensi
+
+- [Midtrans Snap JavaScript](https://docs.midtrans.com/reference/snap-js)
+- [Snap integration guide](https://docs.midtrans.com/docs/snap-snap-integration-guide)
+- [Midtrans HTTP notifications](https://docs.midtrans.com/docs/https-notification-webhooks)

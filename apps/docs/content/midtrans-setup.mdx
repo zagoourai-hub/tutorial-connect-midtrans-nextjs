@@ -1,0 +1,81 @@
+Konfigurasi Midtrans menentukan lingkungan transaksi dan batas kepercayaan aplikasi. Server Key hanya boleh dibaca server; Client Key digunakan browser pada Snap Popup. Keduanya bukan variabel yang dapat dipertukarkan.
+
+## Tujuan Pembelajaran
+
+- Menyiapkan akun dan kredensial Sandbox.
+- Memisahkan Server Key, Client Key, dan konfigurasi environment.
+- Menolak konfigurasi yang tidak valid sebelum membuat transaksi.
+
+## Prasyarat
+
+Workspace [sudah disiapkan](/docs/setup), akun Midtrans yang dapat mengakses Sandbox, dan file `.env` lokal hasil salinan `.env.example`. Jangan menaruh nilai key pada issue, chat, screenshot publik, atau commit.
+
+## Langkah 1 — Buka Sandbox Midtrans
+
+Masuk ke dashboard merchant Midtrans dan pilih lingkungan Sandbox. Cari bagian konfigurasi access keys sesuai antarmuka akun yang Anda gunakan. Nama atau lokasi menu dapat berubah; gunakan dokumentasi resmi ketika tampilannya berbeda.
+
+Salin Server Key dan, untuk chapter Popup, Client Key **dari lingkungan yang sama**. Account Production dan Sandbox memiliki konfigurasi terpisah. Tutorial utama tidak mengaktifkan pembayaran nyata.
+
+## Langkah 2 — Isi env lokal aplikasi contoh
+
+Konfigurasi minimal menggunakan nama variabel berikut:
+
+```dotenv title="apps/payment-example/.env — hanya contoh"
+DATABASE_URL=file:./prisma/dev.db
+APP_ORIGIN=http://localhost:3001
+MIDTRANS_IS_PRODUCTION=false
+MIDTRANS_SERVER_KEY=YOUR_SANDBOX_SERVER_KEY
+MIDTRANS_CLIENT_KEY=YOUR_SANDBOX_CLIENT_KEY
+```
+
+Ganti placeholder melalui editor lokal. Client Key dibaca oleh Server Component lalu diberikan sebagai prop publik kepada tombol Popup; nama variabel pada contoh ini tidak memerlukan prefix `NEXT_PUBLIC_`. Server Key tetap berada di server dan tidak diteruskan sebagai prop. **Jangan** menambahkan prefix publik atau menyalin Server Key ke bundle frontend.
+
+Jika file `.env.example` versi checkout Anda memiliki variabel tambahan untuk Popup, ikuti nama yang tercantum pada file tersebut dan penjelasan [chapter Popup](/docs/snap-popup). Simpan origin tanpa trailing path, dan sesuaikan dengan port server yang benar.
+
+## Langkah 3 — Pelajari validasi environment
+
+Berikut file validasi env yang dipakai aplikasi contoh. Kode ditampilkan langsung dari source repository saat dokumentasi dibangun:
+
+<SourceCode path="lib/env.ts" />
+
+Env diubah dari string menjadi tipe yang sesuai di satu tempat. Boolean production harus diparse secara eksplisit: string `"false"` bukan boolean `false` jika hanya dikonversi memakai `Boolean(value)`. Env invalid menghentikan operasi pembayaran, bukan diam-diam memilih kredensial atau origin lain.
+
+## Langkah 4 — Atur Notification URL saat siap menguji
+
+Endpoint notifikasi aplikasi contoh adalah `/api/midtrans/webhook`. Server Midtrans tidak dapat mengakses `localhost` komputer Anda, sehingga pengujian real notification memakai tunnel HTTPS ke port 3001. Prosedur lengkap dan pemeriksaannya ada di [Sandbox Testing](/docs/testing).
+
+Jangan menunjuk Notification URL ke website dokumentasi statis. Webhook memerlukan runtime server dan database aplikasi contoh, sedangkan website docs hanya menyajikan file statis.
+
+## Penjelasan Kode
+
+`APP_ORIGIN` digunakan untuk memeriksa asal request browser dan menyusun URL aplikasi. Nilainya harus berasal dari konfigurasi server, bukan Host header tak tepercaya. Ketika origin/port berubah, konfigurasi dan browser harus menggunakan origin yang sama.
+
+Flag `MIDTRANS_IS_PRODUCTION` dipisahkan dari `NODE_ENV`. Build produksi Next.js dapat dipakai untuk menguji aplikasi Sandbox; `next build` tidak menjadi alasan memindahkan transaksi ke lingkungan Production.
+
+## Validasi dan Testing
+
+```sh title="Terminal"
+pnpm --filter payment-example test
+pnpm --filter payment-example typecheck
+```
+
+Periksa pengujian env kosong, flag boolean yang tidak valid, dan pemisahan Sandbox/Production. Untuk verifikasi manual, ubah satu variabel yang diperlukan pada env lokal, jalankan server dan pastikan konfigurasi ditolak, lalu pulihkan nilainya. Jangan mencatat nilai key pada laporan hasil.
+
+Status validasi otomatis mengikuti laporan CI dengan env uji. Keberhasilan key dan konfigurasi dashboard nyata baru dapat dipastikan melalui transaksi Sandbox; materi ini tidak mengklaim bahwa pengujian manual tersebut sudah selesai.
+
+## Troubleshooting
+
+- **401 dari Midtrans:** periksa tipe key dan lingkungannya, lalu restart server setelah memperbarui env.
+- **403 pada checkout:** cocokkan origin browser dengan `APP_ORIGIN`; jangan menghapus Origin check sebagai perbaikan.
+- **Webhook tidak pernah datang:** cek tunnel, Notification URL, status server lokal dan log response endpoint yang telah disanitasi.
+- **Key telanjur terpublikasi:** rotasi key dari lingkungan bersih; menghapus teks dari commit terbaru saja tidak menghapus riwayat kebocoran.
+
+## Hasil Akhir
+
+Env aplikasi memiliki batas server/client yang jelas dan tetap memakai Sandbox. Berikutnya, [siapkan Prisma dan SQLite](/docs/prisma) untuk menyimpan order.
+
+## Referensi
+
+- [Midtrans environments](https://docs.midtrans.com/docs/switching-environments)
+- [Snap integration guide](https://docs.midtrans.com/docs/snap-snap-integration-guide)
+- [Next.js environment variables](https://nextjs.org/docs/app/guides/environment-variables)

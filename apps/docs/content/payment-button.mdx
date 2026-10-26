@@ -1,0 +1,78 @@
+Tombol pembayaran menerjemahkan hasil checkout menjadi navigasi yang dapat dipahami pembeli. UI harus menangani loading, error, dan hasil belum pasti tanpa mengubah browser menjadi sumber kebenaran pembayaran.
+
+## Tujuan Pembelajaran
+
+- Membuat Client Component yang memakai Checkout API.
+- Menjaga satu idempotency key selama retry.
+- Mengarahkan ke Snap Redirect dan menangani pembatalan navigasi secara aman.
+
+## Prasyarat
+
+[Checkout API](/docs/checkout-api) siap, session endpoint tersedia, dan katalog seed terlihat pada `/checkout`. Jangan menguji dengan key Production.
+
+## Langkah 1 — Baca halaman katalog
+
+<SourceCode path="app/checkout/page.tsx" />
+
+Produk dibaca server dari katalog, lalu data minimum yang diperlukan UI diteruskan ke komponen tombol. Total yang terlihat di browser berguna sebagai informasi; harga akhir tetap dihitung ulang server.
+
+## Langkah 2 — Pelajari tombol Redirect
+
+<SourceCode path="components/pay-button.tsx" />
+
+State diperlukan untuk request yang sedang berjalan dan pesan error. Tombol tidak aktif saat sesi belum siap atau checkout sedang diproses. Atribut dan pesan loading harus dapat dipahami pembaca layar, bukan hanya animasi tanpa label.
+
+`fetch()` memanggil endpoint same-origin. Jangan mengambil Server Key di komponen ini. UUID checkout dibuat untuk satu percobaan; key tetap sama ketika jaringan gagal, sehingga server dapat membedakan retry dengan order baru.
+
+## Langkah 3 — Tangani response berdasarkan maknanya
+
+1. Pada hasil `READY`, browser menerima URL yang sudah divalidasi server dan melakukan navigasi ke halaman Snap.
+2. Pada hasil `UNKNOWN` atau `INITIATED`, tampilkan penjelasan bahwa hasil create belum pasti. Jangan menawarkan retry dengan key baru sebagai solusi otomatis.
+3. Pada kegagalan input, tampilkan informasi yang dapat diperbaiki pengguna.
+4. Pada error jaringan, pertahankan key dan cart untuk retry terkontrol.
+5. Pada order terminal, arahkan pengguna ke status order miliknya daripada membuka pembayaran ulang.
+
+Jangan hanya memeriksa apakah JSON memiliki properti URL; periksa HTTP status dan bentuk respons yang diharapkan. Respons HTML/error jaringan tidak boleh di-cast begitu saja menjadi tipe checkout sukses.
+
+## Langkah 4 — Ketika pembeli membatalkan navigasi
+
+Pembeli dapat menekan Back, menutup tab, membatalkan metode pembayaran atau kehilangan koneksi. Tindakan tersebut tidak selalu sama dengan status provider `cancel`. Database hanya mengikuti webhook atau rekonsiliasi terverifikasi.
+
+Ketika kembali ke aplikasi, halaman status mengambil order dari database menggunakan cookie pemilik. Menambahkan `?transaction_status=settlement` ke URL tidak membuat order menjadi PAID.
+
+## Penjelasan Kode
+
+Menonaktifkan tombol mengurangi double click, sedangkan idempotensi server menangani request ulang yang tetap dapat terjadi. Keduanya saling melengkapi. UI tidak boleh menampilkan raw SDK error karena bisa berisi metadata sensitif.
+
+Sesi anonim tidak sama dengan identitas pengguna. Cookie yang dihapus atau kedaluwarsa membuat akses order tidak tersedia lagi; tutorial ini tidak menambahkan login atau pemulihan akun di luar scope.
+
+## Validasi dan Testing
+
+```sh title="Terminal"
+pnpm --filter payment-example dev
+```
+
+Buka `http://localhost:3001/checkout` dan gunakan keyboard untuk memilih tombol. Uji loading, double click, error request dan navigasi dengan mock endpoint pada test browser. Pada retry setelah putus jaringan, periksa bahwa header idempotency key tetap sama.
+
+```sh title="Terminal — pemeriksaan otomatis"
+pnpm --filter payment-example test
+pnpm --filter payment-example typecheck
+```
+
+Hasil otomatis mengikuti laporan CI. Redirect ke domain Sandbox yang valid belum membuktikan pembayaran sukses; pengujian transaksi manual mengikuti [Sandbox Testing](/docs/testing).
+
+## Troubleshooting
+
+- **Tombol loading tidak berhenti:** pastikan semua jalur response/error mengakhiri state request; bedakan pending hasil provider dari request browser yang masih aktif.
+- **Cookie tidak ikut:** gunakan origin aplikasi yang sama dan periksa konfigurasi SameSite/Secure untuk localhost.
+- **Kembali dari Snap tetapi status belum PAID:** jangan ubah status di browser; cek notifikasi webhook.
+- **Popup diblokir:** alur ini memakai Redirect. Implementasi Popup memiliki penanganan berbeda pada chapter opsional.
+
+## Hasil Akhir
+
+Tombol mampu memulai pembayaran dengan state yang jelas dan retry aman. Selanjutnya, [buat webhook terverifikasi](/docs/webhook) untuk menyimpan hasil pembayaran.
+
+## Referensi
+
+- [Next.js Server dan Client Components](https://nextjs.org/docs/app/getting-started/server-and-client-components)
+- [Midtrans Snap Redirect](https://docs.midtrans.com/docs/snap-snap-integration-guide)
